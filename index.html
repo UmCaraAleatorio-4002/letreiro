@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Letreiro Coletivo Sem Servidor</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #111; color: #fff; margin: 0; padding: 0; }
+        
+        /* Letreiro */
+        .marquee-container { background: #ffcc00; color: #000; overflow: hidden; white-space: nowrap; padding: 15px 0; font-size: 24px; font-weight: bold; }
+        .marquee-text { display: inline-block; padding-left: 100%; animation: marquee 15s linear infinite; }
+        @keyframes marquee { 0% { transform: translate(0, 0); } 100% { transform: translate(-100%, 0); } }
+
+        /* Painel */
+        .admin-panel { max-width: 400px; margin: 50px auto; padding: 20px; background: #222; border-radius: 8px; border: 1px solid #333; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; color: #aaa; }
+        .input-group input { width: 100%; padding: 10px; border: none; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #ffcc00; border: none; color: #000; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        #status { margin-top: 10px; font-weight: bold; text-align: center; }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <div class="marquee-container">
+        <div class="marquee-text" id="letreiro">Conectando ao letreiro...</div>
+    </div>
+
+    <div class="admin-panel">
+        <h3>Painel do Letreiro (GitHub Pages)</h3>
+        <div class="input-group">
+            <label for="senha">Senha de Admin:</label>
+            <input type="password" id="senha" placeholder="Sua senha definida no código">
+        </div>
+        <div class="input-group">
+            <label for="novoTexto">Novo Texto:</label>
+            <input type="text" id="novoTexto" placeholder="Mudar para todo mundo...">
+        </div>
+        <button onclick="atualizarTexto()">Atualizar Letreiro</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        // CONFIGURAÇÃO DO CONFIG (Substitua pelos seus dados do Supabase)
+        const SUPABASE_URL = "https://eyhmddfwjnqeihanjvfq.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_MEUY36_4ab0hCSua6ZohEA_Ej8_RasB";
+        const SENHA_CORRETA = "admin123"; // ic121212
+
+        // Inicializa o cliente Supabase
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const letreiro = document.getElementById('letreiro');
+        const statusDiv = document.getElementById('status');
+
+        // 1. Função para buscar o texto atual assim que a página abre
+        async function buscarTextoAtual() {
+            let { data, error } = await supabase
+                .from('letreiro')
+                .select('texto')
+                .eq('id', 1)
+                .single();
+            
+            if (data) {
+                letreiro.innerText = data.texto;
+            }
+        }
+
+        // 2. Escuta mudanças em TEMPO REAL no banco de dados (o segredo para mudar para todos)
+        supabase
+            .channel('mudancas-letreiro')
+            .on('postgres_changes', { event: 'UPDATE', filter: 'id=eq.1', schema: 'public', table: 'letreiro' }, payload => {
+                letreiro.innerText = payload.new.texto;
+            })
+            .subscribe();
+
+        // 3. Função para o Admin atualizar o texto
+        async function atualizarTexto() {
+            const senha = document.getElementById('senha').value;
+            const novoTexto = document.getElementById('novoTexto').value;
+
+            if (senha !== SENHA_CORRETA) {
+                statusDiv.innerText = "Senha incorreta!";
+                statusDiv.style.color = "crimson";
+                return;
+            }
+
+            if (!novoTexto) {
+                statusDiv.innerText = "Digite um texto.";
+                statusDiv.style.color = "orange";
+                return;
+            }
+
+            // Atualiza a linha com ID 1 no banco de dados
+            const { error } = await supabase
+                .from('letreiro')
+                .update({ texto: novoTexto })
+                .eq('id', 1);
+
+            if (error) {
+                statusDiv.innerText = "Erro ao atualizar.";
+                statusDiv.style.color = "crimson";
+                console.error(error);
+            } else {
+                statusDiv.innerText = "Atualizado com sucesso!";
+                statusDiv.style.color = "lightgreen";
+                document.getElementById('novoTexto').value = "";
+            }
+        }
+
+        // Inicia buscando o texto da nuvem
+        buscarTextoAtual();
+    </script>
+</body>
+</html>
